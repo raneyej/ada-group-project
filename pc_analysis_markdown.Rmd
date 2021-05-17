@@ -1,0 +1,164 @@
+---
+title: "pcanalysis Package Vignette"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{pcanalysis Package Vignette}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+set.seed(2746)
+```
+**2021-05-16**
+
+*Jared Cole, Devin Grobert, and Emily Raney*
+
+## Introduction
+
+The pcanalysis package performs a principal component analysis (PCA) on a numerical data matrix and allows for easy plotting of the PCs. The package can also perform a k-means clustering analysis on the data matrix and sort samples into clusters. All of the plotting and analyses are performed using base R functionality and so no dependencies are required. 
+
+PCA decomposes a data matrix with many dimensions and reduces the dimensionality to include only the principal components. This allows, for example, observations with many variables to be grouped and plotted in two or three dimensional space.
+
+To use the package, simply install it and load it into the environment:
+
+```{r setup}
+library(pcanalysis)
+```
+
+An example dataset included with the package, *gene_exp_data*, contains simulated gene expression data (read counts) for 100 genes for 1000 samples. Here are the first six samples and the first seven genes:
+
+```{r viewdata}
+head(gene_exp_data)[,1:7]
+```
+
+Since the simulated data comes from two different hypothetical species with very different gene expression profiles for these 100 genes, the PCA should be able to distinguish and separate the two species. 
+
+It's important that the dataset be a numerical matrix, as the analyses cannot be performed on categorical data. Please filter your dataset to include only numerical values.
+
+It's also important that the observations you want to cluster by PCA are represented as columns in the data matrix. In this case, we want to cluster the samples by their gene expression profiles, so the 1000 samples need to be columns and the counts for the 100 genes the rows, which can be obtained by transposing the matrix (using the `t()` function) as such: 
+
+
+```{r viewdata_t}
+gnxp_t <- t(gene_exp_data)
+head(gnxp_t)[,1:7]
+```
+
+## Performing PCA using Singular Value Decomposition 
+
+The pcanalysis package let's the user perform PCA using two methods: singular value decomposition (SVD) and spectral decomposition. The default method is SVD. 
+
+PCA using SVD decomposes a data matrix by projecting the data points in space onto a line that maximizes the sum of the squared distances (SSD) between the observations and the origin (after centering the data). The vector that maximizes the SSD is the first principal component (PC). The second PC is found simply by fitting a line perpendicular to the first PC, and the third PC is found by fitting a line perpendicular to both PC 1 and 2, etc. These vectors are often referred to as "singular vectors". The square root of the SSDs yield the "singular values". These indicate how much of the variance each PC contributes to. 
+
+To run the PCA on a data matrix, call `run.pca()` on the matrix object. For example, PCA can be peformed on the gene expression data:
+
+```{r run_pca_1}
+gene_pca <- run.pca(gnxp_t, center = TRUE, scale = FALSE, svd = TRUE)
+```
+
+In the above function, the following arguments can be passed:
+
+ * **center** - if this is TRUE, it will zero-center the data by subtracting the mean from each value. Default is TRUE.
+ * **scale** - if TRUE, will scale the data to unit variance. If center is TRUE, will divide the centered data columns by their standard deviations. If center is FALSE, will divide the data by root mean square, 
+ * **svd** - If TRUE, uses the singular value decomposition method, if FALSE uses spectral decomposition. 
+
+The output of the function is a list object, here named *gene_pca*:
+```{r view_pca}
+head(gene_pca$Data)[,1:5]
+gene_pca$k
+head(gene_pca$PCs)[,1:5]
+head(gene_pca$sdev)[1:5]
+```
+
+The list contains the following elements:
+
+  * **Data** - a preview of the input data matrix
+  * **k** - the number of observations in the dataset
+  * **PCs** - the matrix of principal components as singular vectors
+  * **sdev** - the standard deviation of the PCs using singular values
+
+## Performing PCA using Spectral Decomposition 
+
+Spectral value decomposition takes as input a covariance matrix containing each element and uses eigen decomposiion to return the PCs (as eigenvectors) and the square root of the SSDs (eigenvalues).  
+
+The user can specify a spectral decomposition method by setting `svd = FALSE` when passing `run.pca()`.  
+
+```{r run_pca_2}
+gene_pca_eigen <- run.pca(gnxp_t, center = TRUE, scale = FALSE, svd = FALSE)
+```
+
+The output of the function is again a list object that returns the same elements as before, but also outputs the raw eigenvalues:
+```{r view_pca_2}
+head(gene_pca_eigen$PCs)[,1:5]
+gene_pca_eigen$Eigenvalues[1:5]
+gene_pca_eigen$sdev[1:5]
+```
+
+The list contains the following elements:
+
+  * **Data** - a preview of the input data matrix
+  * **k** - the number of observations in the dataset
+  * **PCs** - the matrix of principal components as eigenvectors
+  * **Eigenvalues** - the eigenvalues for each eigenvector
+  * **sdev** - the standard deviation of the PCs using the square root of the eigenvalues
+
+## Plotting the PCs
+
+Included with the pcanalysis is a function to quickly plot the PCs, `pca.plot()`. 
+
+Now that we've run our PC analysis, we can visualize multi-dimensional data in a two-dimensional plot. The plotting function creates three plots: a scatter plot of the first and second principal components, a scatter plot of the first and third principal components, and a bar plot demonstrating the amount of variance that each principal component contributes, which is generated by squaring the deviations and dividing by the sum of the squared deviations.
+
+Using the PCs calculated from the output of the `run.pca()` function:
+
+```{r plot, fig.align="center", fig.height=5, fig.width=6, message=FALSE, warning=FALSE}
+pca.plot(gene_pca)
+```
+
+The plots indicate that there are clearly two clusters in the data, which is consistent with two species sampled in the gene expression data. The final plot shows that the majority of the variation is explained by components 1 and 2. 
+
+## Determining optimal k with a scree plot (for k-means)
+
+In PCA, the term "scree plot" may sometimes be used to describe a line plot of eigenvalues (on the y-axis) for each principal component (on the x-axis).  Similar eigenvalues for consecutive principal components indicates little value in inclusion, and this can be used to establish statistical significance in determining how many principal components should be used in factor analysis.  Very often in PCA, the first two or three principal components are adequate for factor analysis, so this package instead uses scree plots to indicate the optimal number of clusters to use in k-means clustering.  
+
+K-means clustering aims to partition each observation into the cluster with the nearest mean by minimizing the within-cluster variance.  However, the user must indicate the optimal number of clusters as an input.  With too few clusters, the distance of data points from the center is too large, and the clusters are not as coherent or meaningful as they could be.  With too many clusters, we get a negligible reduction in the distance of points from the center (or "centroid") and end up overfitting the model.  
+
+These scree plots show within-cluster variance (sum of squares) on the y-axis and number of clusters on the x-axis.  The optimal number of clusters is indicated where the slope of the line decreases (flattens out) abruptly (at the "elbow").  Steep angles between number of clusters indicates that significant decreases of within-cluster variance are occuring with additional clusters, which is good.  If additional clusters are no longer reducing variance, they are no longer optimal.  If no distinct "elbow" forms, for example if the line plot flattens out and then drops again, silhouette analysis may be needed to indicate the optimal number of clusters.
+
+Here, we use scree plots to determine the optimal number of clusters. This can performed by using the `pca.scree()` function on the original data matrix. This will return a scree plot and a vector with the total within-sum-of-squares for each k. For example, the gene expression data can be used: 
+
+```{r screeplot, fig.align="center", fig.height=5, fig.width=6, message=FALSE, warning=FALSE}
+pca.scree(gnxp_t, kmax=10, iter.max=10)
+```
+
+In the above function, the following arguments can be passed:
+
+ * **kmax** - a numerical value indicating the maximum number of k values 
+ * **iter.max** - the maximum number of k-means iterations to run
+
+
+In this case, the "elbow" is visible at a k of 2, which is consistent with the two species sampled in the gene expression data and the PC plot above. 
+
+
+## Sorting into clusters with k-means and plotting PCs by cluster
+
+As stated above, k-means clustering aims to partition each observation into the cluster with the nearest mean by minimizing the within-cluster variance.  To do this, k observations are arbitrarily selected as centers, squared euclidian distance is calculated from each other point to each center, and each point is clustered with the nearest center.  Then, actual centers are calculated (instead of using those arbitrary chosen observations), distances are re-calculated, and clusters are reassigned as needed.  In a final iteration, centers are calculated a third time, and any remaining stragglers are reassigned to the nearest center.  This package outputs a vector for cluster identity, which is useful for plotting.  
+
+The advantages of k-means are that it is a simple, computationally efficient, and intuitive way to connect the dimensionality-reduction aspect of PCA back to clusters of variables that may be more familiar.  The main drawbacks of k-means clustering are that it is sensitive to problems from random initialization (if inappropriate observations are arbitrarily selected), it is sensitive to outliers, it will not work on categorical data, and a non-optimal number of clusters can undermine the model.  
+
+To partition our observations or samples into clusters using k-means, we use the `pca.cluster()` function using our data matrix, PC scores for each sample, and the optimal k found using the total within sum-of-squares from the above scree plot (k =2). This function plots PC 1 vs PC 2 and colors the samples by their assigned cluster from k-means. It also outputs a matrix with each sample and the assigned cluster. 
+
+```{r cluster, fig.align="center", fig.height=5, fig.width=6, message=FALSE, warning=FALSE}
+#using head() to truncate the output to the first six samples
+head(pca.cluster(gnxp_t, gene_pca, k=2))
+```
+
+
+
+
+
+
+
